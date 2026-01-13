@@ -1,0 +1,62 @@
+{
+  "run_id": "conservative_001",
+  "description": "Conservative strategy with tight risk controls",
+  "market_scope": {
+    "venue": "coinbase",
+    "symbols": ["BTC-USD", "ETH-USD"],
+    "primary_timeframe": "15m",
+    "additional_timeframes": ["1h", "4h"],
+    "start_date": null,
+    "end_date": null,
+    "warmup_bars": 400
+  },
+  "fees": {
+    "maker_bps": 6.0,
+    "taker_bps": 12.5
+  },
+  "portfolio": {
+    "starting_equity_usd": 10000.0,
+    "max_positions": 2,
+    "max_exposure_fraction": 0.6,
+    "allow_leverage": false,
+    "position_size_method": "risk_parity",
+    "risk_per_trade_fraction": 0.01
+  },
+  "llm": {
+    "provider": "anthropic",
+    "model": "claude-3-sonnet-20240229",
+    "temperature": 0.0,
+    "max_tokens": 500,
+    "max_calls_per_minute": 50,
+    "max_retries": 3,
+    "initial_retry_delay": 1.0,
+    "circuit_breaker_threshold": 5,
+    "fallback_decision": "skip"
+  },
+  "playbooks": [
+    {
+      "name": "breakout",
+      "enabled": true,
+      "entry_params": {
+        "min_compression_bars": 15,
+        "breakout_threshold_atr": 0.6,
+        "volume_confirm_threshold": 2.0
+      },
+      "stop_loss_atr": 1.5,
+      "take_profit_atr": 4.5,
+      "time_stop_bars": 24,
+      "trailing_enabled": true,
+      "trailing_activation_atr": 1.0,
+      "trailing_distance_atr": 0.8
+    }
+  ],
+  "decision_timing": "on_close",
+  "fill_timing": "next_open",
+  "price_source": "ohlcv",
+  "slippage_model": "static_spread",
+  "feature_mode": "full",
+  "artifacts_dir": "artifacts",
+  "generate_plots": true,
+  "save_payloads": true,
+  "save_responses": true
+}
