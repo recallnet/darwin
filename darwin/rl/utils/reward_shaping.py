@@ -110,8 +110,9 @@ def compute_portfolio_reward(
     Returns:
         Reward value
     """
-    # Base reward: R-multiple
-    reward = actual_r_multiple
+    # Base reward: R-multiple scaled by position size
+    # If position_size_fraction = 0, reward should be 0
+    reward = actual_r_multiple * position_size_fraction
 
     # Drawdown penalty
     if caused_drawdown:

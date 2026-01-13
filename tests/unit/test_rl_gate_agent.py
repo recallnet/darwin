@@ -72,8 +72,9 @@ class TestRewardShaping:
             position_size_fraction=0.5,
             portfolio_state={"exposure_frac": 0.3, "max_exposure_frac": 0.8},
         )
-        # Should get base 1.5 + diversification bonus + capacity bonus
-        assert reward > 1.5
+        # Should get base (1.5 * 0.5 = 0.75) + diversification bonus (0.05)
+        assert reward > 0.7
+        assert reward < 1.0
 
     def test_portfolio_reward_with_drawdown(self):
         """Test portfolio reward with drawdown penalty."""
