@@ -243,6 +243,9 @@ class RunConfigV1(BaseModel):
     # LLM
     llm: LLMConfigV1 = Field(default_factory=LLMConfigV1, description="LLM configuration")
 
+    # RL (optional)
+    rl: Optional["RLConfigV1"] = Field(default=None, description="RL system configuration (optional)")
+
     # Playbooks
     playbooks: List[PlaybookConfigV1] = Field(..., description="List of playbook configurations")
 

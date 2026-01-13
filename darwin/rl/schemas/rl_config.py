@@ -60,10 +60,10 @@ class RLConfigV1(BaseModel):
 
     enabled: bool = False
 
-    # Agent configurations
-    gate_agent: AgentConfigV1
-    portfolio_agent: AgentConfigV1
-    meta_learner_agent: AgentConfigV1
+    # Agent configurations (all optional)
+    gate_agent: Optional[AgentConfigV1] = None
+    portfolio_agent: Optional[AgentConfigV1] = None
+    meta_learner_agent: Optional[AgentConfigV1] = None
 
     # Training settings
     training_frequency: str = "weekly"  # "daily", "weekly", "monthly"
@@ -77,3 +77,12 @@ class RLConfigV1(BaseModel):
     # Safety settings
     max_override_rate: float = 0.2
     fallback_to_baseline_on_degradation: bool = True
+
+
+# Rebuild RunConfigV1 to resolve forward reference
+try:
+    from darwin.schemas.run_config import RunConfigV1
+    RunConfigV1.model_rebuild()
+except (ImportError, AttributeError):
+    # RunConfigV1 not yet loaded or doesn't need rebuild
+    pass

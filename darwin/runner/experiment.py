@@ -28,6 +28,14 @@ from darwin.utils.helpers import compute_hash
 from darwin.utils.logging import configure_logging
 from darwin.utils.validation import validate_run_preflight
 
+# RL system (optional)
+try:
+    from darwin.rl.integration.runner_hooks import RLSystem
+    RL_AVAILABLE = True
+except ImportError:
+    RL_AVAILABLE = False
+    RLSystem = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -96,6 +104,7 @@ class ExperimentRunner:
         self.llm_harness: Optional[LLMHarnessWithRetry] = None
         self.position_manager: Optional[PositionManager] = None
         self.playbooks: Dict[str, PlaybookBase] = {}
+        self.rl_system: Optional[RLSystem] = None
 
         # State
         self.manifest: Optional[RunManifestV1] = None
@@ -206,6 +215,7 @@ class ExperimentRunner:
         self._initialize_feature_pipeline()
         self._initialize_llm_harness()
         self._initialize_position_manager()
+        self._initialize_rl_system()
 
         # Load checkpoint if resuming
         if self.resume_from_checkpoint:
@@ -232,15 +242,23 @@ class ExperimentRunner:
         # - Iterate through bars
         # - For each bar:
         #   - Compute features
+        #   - Get portfolio state
         #   - Evaluate playbooks
         #   - For each candidate:
+        #     - [RL HOOK 1] Gate agent: decide skip/pass (if active mode)
+        #     - If skipped by gate agent, continue to next candidate
         #     - Build LLM payload
         #     - Call LLM
         #     - Parse decision
+        #     - [RL HOOK 2] Meta-learner agent: override LLM decision (if active mode)
         #     - Cache candidate
         #     - Apply gate/budget
         #     - Emit DecisionEvent
-        #     - Simulate trade if TAKE
+        #     - If TAKE:
+        #       - [RL HOOK 3] Portfolio agent: determine position size (if active mode)
+        #       - Simulate trade with position size
+        #   - After trade outcome known:
+        #     - Update RL decision outcomes (for training)
 
         logger.warning("Main loop is a stub - data loading not yet implemented")
         logger.info("Main loop complete (stub)")
@@ -333,6 +351,38 @@ class ExperimentRunner:
         )
         logger.info("Position manager initialized")
 
+    def _initialize_rl_system(self) -> None:
+        """Initialize RL system if configured."""
+        if not self.config.rl:
+            logger.info("RL system not configured")
+            return
+
+        if not RL_AVAILABLE:
+            logger.warning("RL system configured but RL dependencies not installed")
+            return
+
+        try:
+            self.rl_system = RLSystem(config=self.config.rl, run_id=self.config.run_id)
+            logger.info("RL system initialized")
+
+            # Log agent status
+            if self.config.rl.gate_agent and self.config.rl.gate_agent.enabled:
+                mode = self.config.rl.gate_agent.mode
+                active = self.rl_system.gate_agent_active()
+                logger.info(f"  Gate agent: {mode} mode, active={active}")
+
+            if self.config.rl.portfolio_agent and self.config.rl.portfolio_agent.enabled:
+                mode = self.config.rl.portfolio_agent.mode
+                logger.info(f"  Portfolio agent: {mode} mode (not yet implemented)")
+
+            if self.config.rl.meta_learner_agent and self.config.rl.meta_learner_agent.enabled:
+                mode = self.config.rl.meta_learner_agent.mode
+                logger.info(f"  Meta-learner agent: {mode} mode (not yet implemented)")
+
+        except Exception as e:
+            logger.error(f"Failed to initialize RL system: {e}")
+            self.rl_system = None
+
     def _save_manifest(self) -> None:
         """Save manifest to disk."""
         if not self.manifest:
@@ -358,3 +408,5 @@ class ExperimentRunner:
             self.candidate_cache.close()
         if self.position_ledger:
             self.position_ledger.close()
+        if self.rl_system:
+            self.rl_system.close()
