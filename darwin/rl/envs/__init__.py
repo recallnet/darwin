@@ -1,6 +1,7 @@
 """RL environments for agents."""
 
 from darwin.rl.envs.gate_env import GateEnv, ReplayGateEnv
+from darwin.rl.envs.meta_learner_env import MetaLearnerEnv, ReplayMetaLearnerEnv
 from darwin.rl.envs.portfolio_env import PortfolioEnv, ReplayPortfolioEnv
 
 __all__ = [
@@ -8,4 +9,6 @@ __all__ = [
     "ReplayGateEnv",
     "PortfolioEnv",
     "ReplayPortfolioEnv",
+    "MetaLearnerEnv",
+    "ReplayMetaLearnerEnv",
 ]
