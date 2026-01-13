@@ -92,7 +92,7 @@ class CandidateCacheSQLite(CandidateCacheInterface):
                 candidate.symbol,
                 candidate.timeframe,
                 candidate.bar_index,
-                candidate.playbook.value,
+                str(candidate.playbook),
                 candidate.direction,
                 candidate.entry_price,
                 candidate.atr_at_entry,

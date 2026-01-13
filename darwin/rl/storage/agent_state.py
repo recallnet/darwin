@@ -360,6 +360,71 @@ class AgentStateSQLite:
             demoted=bool(row["demoted"]),
         )
 
+    def get_decision_count(
+        self,
+        agent_name: str,
+        since: Optional[datetime] = None,
+    ) -> int:
+        """Get count of decisions for an agent.
+
+        Args:
+            agent_name: Name of the agent
+            since: Optional start date filter
+
+        Returns:
+            Count of decisions
+        """
+        query = "SELECT COUNT(*) as count FROM agent_decisions WHERE agent_name = ?"
+        params: List[str] = [agent_name]
+
+        if since:
+            query += " AND timestamp >= ?"
+            params.append(since.isoformat())
+
+        cursor = self.conn.execute(query, params)
+        row = cursor.fetchone()
+        return row["count"] if row else 0
+
+    def get_decisions_with_outcomes(
+        self,
+        agent_name: str,
+        since: Optional[datetime] = None,
+        until: Optional[datetime] = None,
+    ) -> List[dict]:
+        """Get decisions with outcomes for an agent.
+
+        Args:
+            agent_name: Name of the agent
+            since: Optional start date filter
+            until: Optional end date filter
+
+        Returns:
+            List of decision dictionaries with outcomes
+        """
+        query = """
+            SELECT agent_name, candidate_id, run_id, timestamp,
+                   state_hash, action, mode, model_version,
+                   outcome_r_multiple, outcome_pnl_usd
+            FROM agent_decisions
+            WHERE agent_name = ? AND outcome_r_multiple IS NOT NULL
+        """
+        params: List[str] = [agent_name]
+
+        if since:
+            query += " AND timestamp >= ?"
+            params.append(since.isoformat())
+
+        if until:
+            query += " AND timestamp <= ?"
+            params.append(until.isoformat())
+
+        query += " ORDER BY timestamp DESC"
+
+        cursor = self.conn.execute(query, params)
+        rows = cursor.fetchall()
+
+        return [dict(row) for row in rows]
+
     @staticmethod
     def hash_state(state: np.ndarray) -> str:
         """Compute hash of state vector for deduplication.
