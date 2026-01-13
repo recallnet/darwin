@@ -30,6 +30,7 @@ Example usage:
 """
 
 # Core components
+from darwin.llm.backend import LLMBackendError, create_llm_backend
 from darwin.llm.harness import (
     CircuitBreaker,
     CircuitState,
@@ -56,6 +57,9 @@ from darwin.llm.mock import (
 )
 
 __all__ = [
+    # Backend creation
+    "create_llm_backend",
+    "LLMBackendError",
     # Harness
     "LLMHarnessWithRetry",
     "LLMDecisionResult",

@@ -38,20 +38,29 @@ Darwin is a replay-first, LLM-assisted crypto trading strategy research system d
 ### Installation
 
 ```bash
-# Clone the repository
+# 1. Clone repositories
 git clone https://github.com/recallnet/darwin.git
-cd darwin
+# Optional: clone replay-lab for real market data
+git clone https://github.com/recallnet/replay-lab.git
 
-# Install dependencies (requires Python 3.11+)
+# 2. Install Darwin dependencies (requires Python 3.11+)
+cd darwin
 pip install -e ".[dev,ta]"
 
-# Install nullagent-tutorial and replay-lab
-pip install git+https://github.com/recallnet/nullagent-tutorial.git
-pip install git+https://github.com/recallnet/replay-lab.git
-
-# Set up environment variables
+# 3. Set up Vercel AI Gateway
+# Go to https://vercel.com/ai-gateway and create an API key
 cp .env.example .env
-# Edit .env with your API keys
+# Edit .env and set:
+#   AI_GATEWAY_API_KEY=your-key-here
+#   MODEL_ID=google/gemini-2.0-flash  (or anthropic/claude-sonnet-4-5, deepseek/deepseek-v3.2)
+
+# 4. (Optional) Start replay-lab for real market data
+cd ../replay-lab
+pnpm install
+docker-compose up -d
+pnpm db:migrate:sql
+pnpm dev --filter replay-lab
+# Set REPLAY_LAB_URL=http://localhost:3301 in darwin/.env
 ```
 
 ### Run Your First Experiment
@@ -89,6 +98,67 @@ Candidate Cache (SQLite) → Labels → RL Training (future)
 3. **Ledger is Source of Truth**: All PnL, drawdown, exits come from position ledger
 4. **Candidate Cache is Learning Substrate**: Every opportunity cached, labels attached later
 5. **Schemas are Law**: All artifacts conform to versioned Pydantic schemas
+
+## Integrations
+
+### Vercel AI Gateway (LLM Routing)
+
+Darwin calls **Vercel AI Gateway** directly from Python for unified multi-provider LLM access:
+
+- **Single API Key**: One `AI_GATEWAY_API_KEY` routes to all providers (no per-provider keys needed)
+- **Multi-Provider**: Supports Anthropic, OpenAI, Google Gemini, xAI, Mistral, Perplexity, DeepSeek, and more
+- **Model Format**: `provider/model-name` (e.g., `anthropic/claude-sonnet-4-5`, `google/gemini-2.0-flash`)
+- **Swappable Models**: Each run can specify a different model in its configuration
+- **No External Services**: Direct HTTP calls from Python (no Node.js middleware)
+
+```bash
+# Set in .env
+AI_GATEWAY_BASE_URL=https://ai-gateway.vercel.sh/v1
+AI_GATEWAY_API_KEY=your-key-from-vercel
+MODEL_ID=google/gemini-2.0-flash
+```
+
+**Supported Models:** Darwin supports **ALL 17+ models** available through Vercel AI Gateway with 100% test pass rate:
+- **Anthropic**: Claude Sonnet/Opus/Haiku 4.5
+- **OpenAI**: GPT-4o, GPT-4o Mini, o1 (reasoning)
+- **Google**: Gemini 2.0/2.5 Flash, Gemini 2.5 Pro, Gemini 3 Pro (reasoning)
+- **DeepSeek**: DeepSeek v3.2, DeepSeek Reasoner
+- **xAI**: Grok 2 Vision, Grok 4 Fast Reasoning
+- **Mistral**: Pixtral Large, Ministral 8B
+- **Perplexity**: Sonar Pro
+
+**Recommended Models:**
+- Production: `anthropic/claude-sonnet-4-5` (best quality)
+- Default: `google/gemini-2.0-flash` (fast, cheap, good performance)
+- High-volume: `deepseek/deepseek-v3.2` (very cheap)
+- Reasoning: `openai/o1`, `google/gemini-3-pro-preview` (automatic 4x token boost)
+
+**Auto-Optimization:** Reasoning models automatically get 4000 max_tokens (vs 1000 for standard models)
+
+See [SUPPORTED_MODELS.md](./SUPPORTED_MODELS.md) for full details and test results.
+
+### Replay-Lab (Market Data)
+
+Darwin integrates with [replay-lab](https://github.com/recallnet/replay-lab) for real market data:
+
+- **Architecture**: REST API client calls replay-lab's OHLCV endpoints
+- **Fallbacks**: Gracefully falls back to CSV files or synthetic data
+- **Symbol Mapping**: Converts `BTC-USD` → `COINBASE_SPOT_BTC_USD`
+- **Data Quality**: Validates all OHLCV data before use
+
+```bash
+# Start replay-lab locally
+cd replay-lab
+pnpm dev --filter replay-lab
+
+# Set in .env
+REPLAY_LAB_URL=http://localhost:3301
+```
+
+**Data Priority**:
+1. Replay-Lab API (if `REPLAY_LAB_URL` set and reachable)
+2. CSV files in data directory (if `--data-dir` specified)
+3. Synthetic data (GBM-based price generation for testing)
 
 ## Playbooks
 
