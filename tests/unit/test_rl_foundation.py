@@ -404,8 +404,8 @@ class TestStateEncoders:
 
         assert state.shape == (30,)
         assert np.all(np.isfinite(state))
-        # Check LLM encoding
-        assert state[15] == 0.9  # llm_confidence
+        # Check LLM encoding (use isclose for float32 precision)
+        assert np.isclose(state[15], 0.9, rtol=1e-5)  # llm_confidence
         assert state[16] == 3.0  # llm_setup_quality (A+=3)
         assert state[17] == 1.0  # llm_has_risk_flags
 
@@ -445,9 +445,9 @@ class TestStateEncoders:
 
         assert state.shape == (38,)
         assert np.all(np.isfinite(state))
-        # Check LLM decision encoding
+        # Check LLM decision encoding (use isclose for float32 precision)
         assert state[20] == 1.0  # llm_decision (take=1)
-        assert state[21] == 0.85  # llm_confidence
+        assert np.isclose(state[21], 0.85, rtol=1e-5)  # llm_confidence
         assert state[22] == 2.0  # llm_setup_quality (A=2)
         assert state[23] == 2.0  # llm_risk_flags_count
         assert state[25] == 1.0  # llm_has_notes

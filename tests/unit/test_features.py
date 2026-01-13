@@ -6,17 +6,17 @@ import pytest
 from darwin.features.bucketing import (
     bucket_momentum,
     bucket_price_location,
-    bucket_trend_strength,
-    bucket_volatility,
+    bucket_trend_strength_pct,
+    bucket_vol_mode,
     bucket_volume_regime,
 )
-from darwin.features.indicators import (
-    compute_atr,
-    compute_ema,
-    compute_rsi,
-    compute_sma,
-    compute_true_range,
-)
+# from darwin.features.indicators import (
+#     compute_atr,
+#     compute_ema,
+#     compute_rsi,
+#     compute_sma,
+#     compute_true_range,
+# )
 from darwin.features.pipeline import FeaturePipelineV1
 
 

@@ -319,7 +319,7 @@ class TestExitPriorityInvariants:
 
         # Should exit at stop loss, not trailing
         assert result is not None
-        assert result.reason.value == "stop_loss"
+        assert result.exit_reason.value == "stop_loss"
 
 
 @pytest.mark.property
