@@ -28,6 +28,7 @@ def load_ohlcv_data(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     data_dir: Optional[Path] = None,
+    allow_synthetic: bool = True,
 ) -> pd.DataFrame:
     """
     Load OHLCV data for a symbol and timeframe.
@@ -35,7 +36,7 @@ def load_ohlcv_data(
     Attempts to load data from multiple sources in priority order:
     1. replay-lab (if available)
     2. CSV files in data_dir (if specified)
-    3. Synthetic data (for testing)
+    3. Synthetic data (only if allow_synthetic=True)
 
     Args:
         symbol: Trading symbol (e.g., "BTC-USD")
@@ -43,6 +44,7 @@ def load_ohlcv_data(
         start_date: Start date (YYYY-MM-DD) or None for all available
         end_date: End date (YYYY-MM-DD) or None for latest
         data_dir: Directory containing OHLCV data (optional)
+        allow_synthetic: Allow fallback to synthetic data (default: True)
 
     Returns:
         DataFrame with columns: timestamp, open, high, low, close, volume
@@ -61,6 +63,8 @@ def load_ohlcv_data(
         f"start={start_date}, end={end_date}"
     )
 
+    errors = []
+
     # Try 1: replay-lab API (if configured)
     replay_lab_url = os.getenv("REPLAY_LAB_URL")
     if replay_lab_url:
@@ -72,35 +76,51 @@ def load_ohlcv_data(
             logger.info(f"Loaded {len(df)} bars from replay-lab API")
             return df
         except Exception as e:
-            logger.warning(f"replay-lab API failed: {e}, trying alternative sources")
+            error_msg = f"replay-lab API failed: {e}"
+            logger.warning(error_msg)
+            errors.append(error_msg)
 
     # Try 2: CSV files in data_dir
     if data_dir is not None:
         csv_path = Path(data_dir) / f"{symbol}_{timeframe}.csv"
         if csv_path.exists():
-            logger.info(f"Loading data from CSV: {csv_path}")
-            df = pd.read_csv(csv_path)
-            df['timestamp'] = pd.to_datetime(df['timestamp'])
+            try:
+                logger.info(f"Loading data from CSV: {csv_path}")
+                df = pd.read_csv(csv_path)
+                df['timestamp'] = pd.to_datetime(df['timestamp'])
 
-            # Filter by date range if specified
-            if start_date:
-                df = df[df['timestamp'] >= pd.to_datetime(start_date)]
-            if end_date:
-                df = df[df['timestamp'] <= pd.to_datetime(end_date)]
+                # Filter by date range if specified
+                if start_date:
+                    df = df[df['timestamp'] >= pd.to_datetime(start_date)]
+                if end_date:
+                    df = df[df['timestamp'] <= pd.to_datetime(end_date)]
 
-            validate_ohlcv_data(df)
-            logger.info(f"Loaded {len(df)} bars from CSV")
-            return df
+                validate_ohlcv_data(df)
+                logger.info(f"Loaded {len(df)} bars from CSV")
+                return df
+            except Exception as e:
+                error_msg = f"CSV loading failed: {e}"
+                logger.warning(error_msg)
+                errors.append(error_msg)
 
-    # Try 3: Synthetic data for testing
-    logger.warning(
-        "No real data source available. Generating synthetic data for testing. "
-        "This should only be used for development/testing, not production."
-    )
-    df = _generate_synthetic_ohlcv(symbol, timeframe, start_date, end_date)
-    validate_ohlcv_data(df)
-    logger.info(f"Generated {len(df)} synthetic bars")
-    return df
+    # Try 3: Synthetic data (only if allowed)
+    if allow_synthetic:
+        logger.warning(
+            "No real data source available. Generating synthetic data for testing. "
+            "This should only be used for development/testing, not production."
+        )
+        df = _generate_synthetic_ohlcv(symbol, timeframe, start_date, end_date)
+        validate_ohlcv_data(df)
+        logger.info(f"Generated {len(df)} synthetic bars")
+        return df
+    else:
+        # Fail with all accumulated errors
+        error_summary = "\n".join([f"  - {err}" for err in errors])
+        raise DataLoadError(
+            f"Failed to load real data for {symbol} {timeframe} (synthetic data disabled).\n"
+            f"Errors encountered:\n{error_summary}\n\n"
+            f"To allow synthetic data fallback for testing, set allow_synthetic=True or use mock mode."
+        )
 
 
 def _load_from_replay_lab(
@@ -111,7 +131,10 @@ def _load_from_replay_lab(
     end_date: Optional[str] = None,
 ) -> pd.DataFrame:
     """
-    Load OHLCV data from replay-lab REST API.
+    Load OHLCV data from replay-lab REST API with pagination.
+
+    The function attempts to fetch all available data by making multiple paginated requests.
+    If pagination fails or returns limited data, it will log warnings to help diagnose issues.
 
     Args:
         base_url: Base URL of replay-lab API (e.g., "http://localhost:3301")
@@ -126,6 +149,10 @@ def _load_from_replay_lab(
     Raises:
         DataLoadError: If API request fails
 
+    Environment Variables:
+        REPLAY_LAB_PAGINATION_LIMIT: Override default pagination limit (default: 1000)
+        REPLAY_LAB_MAX_ITERATIONS: Override max pagination iterations (default: 50)
+
     Example:
         >>> df = _load_from_replay_lab("http://localhost:3301", "BTC-USD", "15m")
     """
@@ -137,50 +164,152 @@ def _load_from_replay_lab(
     base, quote = symbol_parts
     replay_lab_symbol = f"COINBASE_SPOT_{base}_{quote}"
 
-    # Build request URL
-    url = f"{base_url}/api/ohlcv/{replay_lab_symbol}"
-    params = {"timeframe": timeframe, "limit": 10000}
-
-    if start_date:
-        # Convert YYYY-MM-DD to ISO8601 datetime
-        params["from"] = f"{start_date}T00:00:00Z"
-    if end_date:
-        params["to"] = f"{end_date}T23:59:59Z"
-
     # Get API key if configured
     api_key = os.getenv("REPLAY_LAB_API_KEY")
     headers = {}
     if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
+        headers["x-api-key"] = api_key
 
-    logger.info(f"Fetching data from replay-lab: {url} with params {params}")
+    # Build request URL
+    url = f"{base_url}/api/ohlcv/{replay_lab_symbol}"
 
-    try:
-        response = httpx.get(url, params=params, headers=headers, timeout=30.0)
-        response.raise_for_status()
-    except httpx.HTTPError as e:
-        raise DataLoadError(f"replay-lab API request failed: {e}")
+    # Fetch data in chunks (configurable via env vars)
+    all_candles = []
+    max_limit = int(os.getenv("REPLAY_LAB_PAGINATION_LIMIT", "1000"))
+    max_iterations = int(os.getenv("REPLAY_LAB_MAX_ITERATIONS", "50"))
 
-    try:
-        data = response.json()
-    except ValueError as e:
-        raise DataLoadError(f"Invalid JSON response from replay-lab: {e}")
+    current_from = f"{start_date}T00:00:00Z" if start_date else None
+    target_to = f"{end_date}T23:59:59Z" if end_date else None
 
-    # Parse response
-    if "candles" not in data:
-        raise DataLoadError(f"Unexpected response format: {data}")
+    logger.info(f"Fetching data from replay-lab: {url}")
+    logger.info(f"  Symbol: {replay_lab_symbol}")
+    logger.info(f"  Timeframe: {timeframe}")
+    logger.info(f"  Date range: {current_from} to {target_to}")
+    logger.info(f"  Pagination: limit={max_limit}, max_iterations={max_iterations}")
 
-    candles = data["candles"]
-    if not candles:
+    iteration = 0
+    seen_timestamps = set()  # Track to avoid duplicates
+
+    while iteration < max_iterations:
+        iteration += 1
+        params = {"timeframe": timeframe, "limit": max_limit}
+
+        if current_from:
+            params["from"] = current_from
+        if target_to:
+            params["to"] = target_to
+
+        logger.info(f"  Pagination iteration {iteration}: from={current_from}, limit={max_limit}")
+
+        try:
+            response = httpx.get(url, params=params, headers=headers, timeout=30.0)
+            response.raise_for_status()
+        except httpx.HTTPError as e:
+            raise DataLoadError(f"replay-lab API request failed: {e}")
+
+        try:
+            data = response.json()
+        except ValueError as e:
+            raise DataLoadError(f"Invalid JSON response from replay-lab: {e}")
+
+        # Parse response
+        if "candles" not in data:
+            raise DataLoadError(f"Unexpected response format: {data}")
+
+        candles = data["candles"]
+        if not candles:
+            # No more data
+            logger.info(f"  No more candles returned. Pagination complete.")
+            break
+
+        # Filter out duplicates (can happen at pagination boundaries)
+        new_candles = []
+        duplicate_count = 0
+        for candle in candles:
+            ts = candle.get("timestamp") or candle.get("period_start")
+            if ts not in seen_timestamps:
+                seen_timestamps.add(ts)
+                new_candles.append(candle)
+            else:
+                duplicate_count += 1
+
+        if duplicate_count > 0:
+            logger.debug(f"  Filtered {duplicate_count} duplicate candles")
+
+        if not new_candles:
+            logger.info(f"  All candles were duplicates. Pagination complete.")
+            break
+
+        all_candles.extend(new_candles)
+        logger.info(f"  Fetched {len(new_candles)} new candles (total: {len(all_candles)})")
+
+        # Check if we got less than max_limit (meaning we've reached the end)
+        if len(candles) < max_limit:
+            logger.info(f"  Received {len(candles)} < {max_limit} candles. Reached end of data.")
+            break
+
+        # Update current_from to AFTER the last (oldest) candle we received
+        # replay-lab returns candles in descending order (newest first)
+        # So candles[-1] is the oldest, and we want to fetch data OLDER than that
+        last_candle = candles[-1]
+        last_timestamp_str = last_candle.get("timestamp") or last_candle.get("period_start")
+
+        # Parse the timestamp and advance it by 1 second to avoid fetching the same candle
+        try:
+            last_timestamp = pd.to_datetime(last_timestamp_str)
+            # Move 1 second earlier (since we're going backwards in time)
+            next_timestamp = last_timestamp - pd.Timedelta(seconds=1)
+            current_from = next_timestamp.strftime("%Y-%m-%dT%H:%M:%SZ")
+            logger.debug(f"  Advanced from {last_timestamp_str} to {current_from}")
+        except Exception as e:
+            logger.warning(f"  Failed to parse timestamp for pagination: {e}")
+            # Fallback: use the string as-is (might cause duplicates)
+            current_from = last_timestamp_str
+
+    if iteration >= max_iterations:
+        logger.warning(f"Reached maximum pagination iterations ({max_iterations}). There may be more data available.")
+        logger.warning(f"Consider increasing REPLAY_LAB_MAX_ITERATIONS environment variable.")
+
+    if not all_candles:
         raise DataLoadError("No candles returned from replay-lab")
+
+    # Log final summary
+    logger.info(f"✅ Pagination complete: fetched {len(all_candles)} total candles in {iteration} iteration(s)")
+
+    # Warn if we got suspiciously few candles (possible API issue)
+    if start_date and end_date:
+        # Calculate expected minimum candles based on timeframe
+        try:
+            start_dt = pd.to_datetime(start_date)
+            end_dt = pd.to_datetime(end_date)
+            days = (end_dt - start_dt).days
+
+            # Rough estimate: 15m = 96/day, 1h = 24/day, 4h = 6/day
+            timeframe_minutes = _parse_timeframe_to_minutes(timeframe)
+            candles_per_day = 1440 / timeframe_minutes
+            expected_min = int(days * candles_per_day * 0.5)  # At least 50% of expected
+
+            if len(all_candles) < expected_min:
+                logger.warning(f"⚠️  Received fewer candles than expected:")
+                logger.warning(f"   Got: {len(all_candles)} candles")
+                logger.warning(f"   Expected (min): ~{expected_min} candles for {days} days at {timeframe}")
+                logger.warning(f"   This may indicate:")
+                logger.warning(f"   1. ReplayLabs server has limited historical data")
+                logger.warning(f"   2. API pagination is not working correctly")
+                logger.warning(f"   3. Date range includes gaps (weekends/holidays)")
+                logger.warning(f"   Run 'python scripts/test_replay_lab_pagination.py' to diagnose")
+        except Exception:
+            pass  # Skip warning if we can't calculate
 
     # Convert to DataFrame
     # replay-lab returns candles in descending order (newest first)
     # We need to reverse to get ascending order (oldest first)
     rows = []
-    for candle in reversed(candles):
+    for candle in reversed(all_candles):
+        # Handle both timestamp formats
+        ts = candle.get("timestamp") or candle.get("period_start")
         rows.append({
-            "timestamp": pd.to_datetime(candle["period_start"]),
+            "timestamp": pd.to_datetime(ts),
             "open": float(candle["open"]),
             "high": float(candle["high"]),
             "low": float(candle["low"]),

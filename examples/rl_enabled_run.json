@@ -16,10 +16,10 @@
   },
   "portfolio": {
     "starting_equity_usd": 10000.0,
-    "max_positions": 3,
+    "max_positions": 999,
     "max_exposure_fraction": 0.8,
     "allow_leverage": false,
-    "position_size_method": "equal_weight",
+    "position_size_method": "risk_parity",
     "risk_per_trade_fraction": 0.02
   },
   "llm": {
@@ -75,6 +75,7 @@
       "graduation_thresholds": {
         "min_training_samples": 1000,
         "min_validation_samples": 200,
+        "min_candidates_seen": 2000,
         "min_validation_metric": 0.1,
         "baseline_type": "pass_all",
         "min_improvement_pct": 20.0
@@ -88,6 +89,7 @@
       "graduation_thresholds": {
         "min_training_samples": 500,
         "min_validation_samples": 100,
+        "min_candidates_seen": 2000,
         "min_validation_metric": 1.5,
         "baseline_type": "equal_weight",
         "min_improvement_pct": 10.0
@@ -101,6 +103,7 @@
       "graduation_thresholds": {
         "min_training_samples": 2000,
         "min_validation_samples": 400,
+        "min_candidates_seen": 2000,
         "min_validation_metric": 1.0,
         "baseline_type": "llm_only",
         "min_improvement_pct": 10.0

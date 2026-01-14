@@ -87,13 +87,13 @@ class PortfolioConfigV1(BaseModel):
     """Portfolio and risk configuration."""
 
     starting_equity_usd: float = Field(default=10000.0, description="Starting equity in USD")
-    max_positions: int = Field(default=3, description="Maximum concurrent positions")
+    max_positions: int = Field(default=999, description="Maximum concurrent positions (999 = unlimited)")
     max_exposure_fraction: float = Field(
         default=1.0, description="Maximum exposure as fraction of equity"
     )
     allow_leverage: bool = Field(default=False, description="Whether leverage is allowed")
     position_size_method: Literal["equal_weight", "risk_parity"] = Field(
-        default="equal_weight", description="Position sizing method"
+        default="risk_parity", description="Position sizing method"
     )
     risk_per_trade_fraction: float = Field(
         default=0.02, description="Risk per trade as fraction of equity (for risk_parity)"
@@ -280,7 +280,7 @@ class RunConfigV1(BaseModel):
     @model_validator(mode="after")
     def validate_playbook_names(self) -> "RunConfigV1":
         """Ensure playbook names are valid."""
-        valid_names = {"breakout", "pullback"}
+        valid_names = {"breakout", "pullback", "always_signal"}
         for playbook in self.playbooks:
             if playbook.name not in valid_names:
                 raise ValueError(

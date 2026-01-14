@@ -211,10 +211,10 @@ def portfolio_config() -> PortfolioConfigV1:
     """Generate sample portfolio configuration."""
     return PortfolioConfigV1(
         starting_equity_usd=10000.0,
-        max_positions=3,
+        max_positions=999,
         max_exposure_fraction=0.9,
         allow_leverage=False,
-        position_size_method="equal_weight",
+        position_size_method="risk_parity",
         risk_per_trade_fraction=0.02,
     )
 

@@ -67,10 +67,8 @@ class GateAgent(RLAgent):
         # Encode state
         state = self.encoder.encode(candidate, portfolio_state or {})
 
-        # Get action from model
+        # Get action from PPO model
         action, _ = self.model.predict(state, deterministic=deterministic)
-
-        # Convert to int
         action = int(action)
 
         logger.debug(
@@ -102,7 +100,7 @@ class GateAgent(RLAgent):
         # Encode state
         state = self.encoder.encode(candidate, portfolio_state or {})
 
-        # Get action probabilities
+        # Get action probabilities from PPO policy
         action_probs = self.model.policy.get_distribution(state).distribution.probs.detach().numpy()
 
         # Get most likely action

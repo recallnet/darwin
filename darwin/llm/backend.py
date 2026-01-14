@@ -73,16 +73,24 @@ def create_llm_backend(
 
 
 def _is_reasoning_model(model: str) -> bool:
-    """Check if a model is a reasoning model that needs extra tokens."""
-    reasoning_keywords = [
+    """
+    Check if a model is a reasoning model that needs extra tokens.
+
+    Reasoning models use extended "thinking" before responding and need
+    significantly more tokens (typically 500-1000 thinking tokens + response).
+    """
+    model_lower = model.lower()
+
+    # Explicit reasoning models that need token increases
+    reasoning_patterns = [
         "o1",  # OpenAI o1
-        "gemini-3",  # Gemini 3 Pro
+        "gemini-3-pro",  # Gemini 3 Pro (NOT Flash)
         "reasoner",  # DeepSeek Reasoner
         "reasoning",  # Any model with "reasoning" in name
         "grok-4",  # Grok 4 reasoning models
     ]
-    model_lower = model.lower()
-    return any(keyword in model_lower for keyword in reasoning_keywords)
+
+    return any(pattern in model_lower for pattern in reasoning_patterns)
 
 
 def _create_ai_gateway_backend(

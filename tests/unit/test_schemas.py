@@ -105,7 +105,7 @@ class TestPortfolioConfig:
     def test_valid_portfolio_config(self, portfolio_config):
         """Test valid portfolio configuration."""
         assert portfolio_config.starting_equity_usd == 10000.0
-        assert portfolio_config.max_positions == 3
+        assert portfolio_config.max_positions == 999
 
     def test_negative_starting_equity_rejected(self):
         """Test that negative starting equity is rejected."""

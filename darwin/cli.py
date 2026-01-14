@@ -15,6 +15,10 @@ from pathlib import Path
 from typing import List, Optional
 
 import click
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 from darwin.evaluation.meta_report import MetaReportBuilder
 from darwin.evaluation.run_report import RunReportBuilder
@@ -395,6 +399,192 @@ def list_runs(artifacts_dir: Path, verbose: bool):
                 except Exception:
                     pass
             click.echo("")
+
+
+@cli.command()
+@click.argument("config_path", type=click.Path(exists=True, path_type=Path))
+@click.argument("agent_name", type=click.Choice(["gate", "portfolio", "meta_learner"]))
+@click.option(
+    "--no-activate",
+    is_flag=True,
+    help="Don't automatically activate agent after graduation (manual config update required)",
+)
+def train_agent(config_path: Path, agent_name: str, no_activate: bool):
+    """
+    Train an RL agent and evaluate graduation readiness.
+
+    \b
+    CONFIG_PATH: Path to run configuration YAML/JSON file
+    AGENT_NAME: Agent to train (gate, portfolio, or meta_learner)
+
+    \b
+    Examples:
+        darwin train-agent config.yaml gate
+        darwin train-agent config.yaml portfolio
+        darwin train-agent config.yaml meta_learner --no-activate
+
+    \b
+    This command:
+    1. Reads collected data from agent_state.sqlite
+    2. Trains the agent with PPO
+    3. Evaluates against graduation thresholds
+    4. Auto-activates agent in config if graduated (unless --no-activate)
+    5. Creates backup of config before updating
+
+    \b
+    After graduation, the agent will be active on the next run.
+    """
+    from darwin.rl.training.train_agent import train_agent_from_config_file
+
+    configure_logging(console_only=True, level="INFO")
+
+    click.echo(f"\n{'='*80}")
+    click.echo(f"Training RL Agent: {agent_name}")
+    click.echo(f"{'='*80}\n")
+
+    try:
+        graduated = train_agent_from_config_file(
+            str(config_path),
+            agent_name,
+            auto_activate=not no_activate
+        )
+
+        if graduated:
+            click.echo(f"\n🎓 SUCCESS! Agent '{agent_name}' has GRADUATED!")
+            if not no_activate:
+                click.echo("   ✅ Agent automatically activated in config")
+                click.echo("   🚀 Ready to use on next run!")
+            else:
+                click.echo("   📝 Manual config update required (--no-activate was used)")
+        else:
+            click.echo(f"\n📚 Agent '{agent_name}' needs more training.")
+            click.echo("   Continue running backtests to collect more data.")
+
+    except Exception as e:
+        click.echo(f"\n❌ Error training agent: {e}", err=True)
+        sys.exit(1)
+
+
+@cli.command()
+@click.argument("agent_name", type=click.Choice(["gate", "portfolio", "meta_learner"]))
+@click.option(
+    "--db-paths",
+    multiple=True,
+    required=True,
+    type=click.Path(exists=True),
+    help="Paths to agent_state.sqlite databases (can be specified multiple times)",
+)
+@click.option(
+    "--output",
+    "-o",
+    required=True,
+    type=click.Path(path_type=Path),
+    help="Output path for trained model (e.g., artifacts/models/gate/model.zip)",
+)
+@click.option(
+    "--timesteps",
+    default=100000,
+    type=int,
+    help="Total training timesteps (default: 100000)",
+)
+@click.option(
+    "--tensorboard-log",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Tensorboard log directory (optional)",
+)
+def train_multi_run(
+    agent_name: str,
+    db_paths: tuple,
+    output: Path,
+    timesteps: int,
+    tensorboard_log: Optional[Path],
+):
+    """
+    Train an RL agent on data from multiple runs.
+
+    \b
+    AGENT_NAME: Agent to train (gate, portfolio, or meta_learner)
+
+    \b
+    Examples:
+        # Train on data from 3 runs
+        darwin train-multi-run gate \\
+            --db-paths artifacts/run_001/agent_state.sqlite \\
+            --db-paths artifacts/run_002/agent_state.sqlite \\
+            --db-paths artifacts/run_003/agent_state.sqlite \\
+            --output artifacts/models/gate/model.zip
+
+        \b
+        # With tensorboard logging
+        darwin train-multi-run portfolio \\
+            --db-paths run_001/agent_state.sqlite \\
+            --db-paths run_002/agent_state.sqlite \\
+            --output models/portfolio/model.zip \\
+            --tensorboard-log artifacts/tensorboard
+
+        \b
+        # With custom timesteps
+        darwin train-multi-run meta_learner \\
+            --db-paths run_*/agent_state.sqlite \\
+            --output models/meta_learner/model.zip \\
+            --timesteps 200000
+
+    \b
+    This command:
+    1. Loads decision data from all specified databases
+    2. Combines data from multiple runs
+    3. Trains agent with PPO on combined dataset
+    4. Saves trained model to output path
+
+    \b
+    Benefits of multi-run training:
+    - More diverse training data (different market conditions)
+    - Larger dataset (better generalization)
+    - Reduced overfitting to single run
+    - Better performance on unseen data
+    """
+    from darwin.rl.training.multi_run_training import train_agent_multi_run
+
+    configure_logging(console_only=True, level="INFO")
+
+    click.echo(f"\n{'='*80}")
+    click.echo(f"MULTI-RUN TRAINING: {agent_name}")
+    click.echo(f"{'='*80}\n")
+
+    # Convert tuple to list
+    db_paths_list = list(db_paths)
+
+    click.echo(f"Training on {len(db_paths_list)} runs:")
+    for i, path in enumerate(db_paths_list, 1):
+        click.echo(f"  {i}. {path}")
+    click.echo(f"\nOutput: {output}")
+    click.echo(f"Timesteps: {timesteps}")
+    if tensorboard_log:
+        click.echo(f"Tensorboard: {tensorboard_log}")
+    click.echo()
+
+    try:
+        success = train_agent_multi_run(
+            agent_state_db_paths=db_paths_list,
+            agent_name=agent_name,
+            output_model_path=str(output),
+            total_timesteps=timesteps,
+            tensorboard_log=str(tensorboard_log) if tensorboard_log else None,
+        )
+
+        if success:
+            click.secho(f"\n✅ SUCCESS! Multi-run training completed!", fg="green")
+            click.echo(f"   Model saved to: {output}")
+            if tensorboard_log:
+                click.echo(f"   View training with: tensorboard --logdir {tensorboard_log}")
+        else:
+            click.secho(f"\n❌ Multi-run training failed", fg="red")
+            sys.exit(1)
+
+    except Exception as e:
+        click.secho(f"\n❌ Error during multi-run training: {e}", fg="red", err=True)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

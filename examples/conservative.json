@@ -16,7 +16,7 @@
   },
   "portfolio": {
     "starting_equity_usd": 10000.0,
-    "max_positions": 2,
+    "max_positions": 999,
     "max_exposure_fraction": 0.6,
     "allow_leverage": false,
     "position_size_method": "risk_parity",

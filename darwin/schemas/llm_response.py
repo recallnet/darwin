@@ -28,7 +28,7 @@ class LLMResponseV1(BaseModel):
     """
 
     decision: str = Field(..., description="take | skip")
-    setup_quality: str = Field(..., description="A+ | A | B | C")
+    setup_quality: str = Field(..., description="A+ | A | A- | B+ | B | B- | C+ | C | C-")
     confidence: float = Field(..., description="Confidence score [0.0, 1.0]")
     risk_flags: List[str] = Field(default_factory=list, description="Risk flags identified")
     notes: Optional[str] = Field(None, description="One or two sentences max")
@@ -43,8 +43,8 @@ class LLMResponseV1(BaseModel):
     @field_validator("setup_quality")
     @classmethod
     def setup_quality_must_be_valid(cls, v: str) -> str:
-        if v not in ["A+", "A", "B", "C"]:
-            raise ValueError(f"setup_quality must be 'A+', 'A', 'B', or 'C', got '{v}'")
+        if v not in ["A+", "A", "A-", "B+", "B", "B-", "C+", "C", "C-"]:
+            raise ValueError(f"setup_quality must be 'A+', 'A', 'A-', 'B+', 'B', 'B-', 'C+', 'C', or 'C-', got '{v}'")
         return v
 
     @field_validator("confidence")

@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
-from stable_baselines3 import PPO
 
 from darwin.rl.agents.base import RLAgent
 from darwin.rl.utils.state_encoding import PortfolioStateEncoder
@@ -17,14 +16,21 @@ logger = logging.getLogger(__name__)
 class PortfolioAgent(RLAgent):
     """Portfolio agent for determining optimal position sizes.
 
-    Uses PPO with continuous action space [0, 1] for position size fraction.
+    Uses PyTorch neural network with regression output [0, 1] for position size fraction.
     """
 
-    def __init__(self):
-        """Initialize portfolio agent."""
-        super().__init__(agent_name="portfolio")
+    def __init__(self, model_path: str | None = None):
+        """Initialize portfolio agent.
+
+        Args:
+            model_path: Path to trained model (optional)
+        """
+        super().__init__(agent_name="portfolio", model_path=model_path)
         self.encoder = PortfolioStateEncoder()
-        self.model: Optional[PPO] = None
+
+        # Load model if path provided
+        if model_path:
+            self.load_model(model_path)
 
     def predict(
         self,
@@ -50,10 +56,8 @@ class PortfolioAgent(RLAgent):
         # Encode state
         state = self.encoder.encode(candidate, llm_response, portfolio_state or {})
 
-        # Predict action
+        # Get position size from PPO model
         action, _ = self.model.predict(state, deterministic=deterministic)
-
-        # Clip to valid range
         position_size = float(np.clip(action[0], 0.0, 1.0))
 
         return position_size
@@ -80,16 +84,15 @@ class PortfolioAgent(RLAgent):
         # Encode state
         state = self.encoder.encode(candidate, llm_response, portfolio_state or {})
 
-        # Predict with policy
+        # Get prediction
         action, _ = self.model.predict(state, deterministic=False)
         position_size = float(np.clip(action[0], 0.0, 1.0))
 
-        # Estimate confidence from value function
+        # Get value function estimate as confidence
         try:
             obs_tensor = self.model.policy.obs_to_tensor(state)[0]
-            with self.model.policy.policy.mlp_extractor.forward(obs_tensor):
-                value = self.model.policy.predict_values(obs_tensor)
-                confidence = float(np.abs(value.detach().numpy()[0][0]))
+            value = self.model.policy.predict_values(obs_tensor)
+            confidence = float(np.abs(value.detach().numpy()[0][0]))
         except Exception as e:
             logger.warning(f"Failed to estimate confidence: {e}")
             confidence = 0.5  # Default confidence
@@ -111,27 +114,6 @@ class PortfolioAgent(RLAgent):
             Action space description
         """
         return "Box(0.0, 1.0, (1,))"
-
-    def load_model(self, model_path: str) -> None:
-        """Load trained PPO model.
-
-        Args:
-            model_path: Path to model file
-        """
-        model_file = Path(model_path)
-        if not model_file.exists():
-            raise FileNotFoundError(f"Model not found: {model_path}")
-
-        self.model = PPO.load(str(model_file))
-        logger.info(f"Loaded portfolio agent model from {model_path}")
-
-    def is_loaded(self) -> bool:
-        """Check if model is loaded.
-
-        Returns:
-            True if model is loaded
-        """
-        return self.model is not None
 
     def explain_decision(
         self,

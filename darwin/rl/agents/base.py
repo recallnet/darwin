@@ -54,17 +54,29 @@ class RLAgent(ABC):
         raise NotImplementedError
 
     def load_model(self, model_path: str) -> None:
-        """Load trained model from path.
+        """Load trained PPO model from path.
 
         Args:
-            model_path: Path to model file
+            model_path: Path to model file (.zip)
         """
-        from stable_baselines3 import PPO
-
         try:
-            self.model = PPO.load(model_path)
+            from pathlib import Path
+            from stable_baselines3 import PPO
+
+            model_file = Path(model_path)
+            if not model_file.exists():
+                raise FileNotFoundError(f"Model file not found: {model_path}")
+
+            # Load PPO model
+            self.model = PPO.load(str(model_file))
             self.model_path = model_path
-            logger.info(f"Loaded {self.agent_name} model from {model_path}")
+
+            logger.info(f"Loaded {self.agent_name} PPO model from {model_path}")
+
+        except ImportError as e:
+            logger.error(f"stable-baselines3 not available: {e}")
+            logger.error("Install with: pip install 'darwin[rl]'")
+            raise
         except Exception as e:
             logger.error(f"Failed to load model from {model_path}: {e}")
             raise

@@ -16,18 +16,18 @@
   },
   "portfolio": {
     "starting_equity_usd": 10000.0,
-    "max_positions": 3,
+    "max_positions": 999,
     "max_exposure_fraction": 0.9,
     "allow_leverage": false,
-    "position_size_method": "equal_weight",
+    "position_size_method": "risk_parity",
     "risk_per_trade_fraction": 0.02
   },
   "llm": {
-    "provider": "anthropic",
-    "model": "claude-3-sonnet-20240229",
+    "provider": "google",
+    "model": "google/gemini-3-flash",
     "temperature": 0.0,
     "max_tokens": 500,
-    "max_calls_per_minute": 50,
+    "max_calls_per_minute": 60,
     "max_retries": 3,
     "initial_retry_delay": 1.0,
     "circuit_breaker_threshold": 5,

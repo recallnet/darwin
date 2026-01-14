@@ -15,6 +15,7 @@ class GraduationThresholdsV1(BaseModel):
     # Data requirements
     min_training_samples: int
     min_validation_samples: int
+    min_candidates_seen: int = 2000  # Minimum total candidates agent must see
 
     # Performance requirements (all must pass)
     min_validation_metric: float  # Agent-specific metric (e.g., pass rate, Sharpe)

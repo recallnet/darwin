@@ -12,6 +12,7 @@ class PlaybookType(str, Enum):
 
     BREAKOUT = "breakout"
     PULLBACK = "pullback"
+    ALWAYS_SIGNAL = "always_signal"
 
 
 class ExitSpecV1(BaseModel):

@@ -20,6 +20,8 @@ from darwin.features.indicators import (
 
 # Feature pipeline
 from darwin.features.pipeline import FeaturePipelineV1
+# Backwards compatibility alias
+FeaturePipeline = FeaturePipelineV1
 
 # Bucketing functions
 from darwin.features.bucketing import (
@@ -54,6 +56,7 @@ __all__ = [
     "DonchianState",
     # Pipeline
     "FeaturePipelineV1",
+    "FeaturePipeline",  # Backwards compatibility
     # Bucketing
     "bucket_trend_mode",
     "bucket_vol_mode",

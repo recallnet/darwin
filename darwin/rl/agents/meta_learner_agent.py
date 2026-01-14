@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
-from stable_baselines3 import PPO
 
 from darwin.rl.agents.base import RLAgent
 from darwin.rl.utils.state_encoding import MetaLearnerStateEncoder
@@ -22,17 +21,24 @@ OVERRIDE_TO_TAKE = 2
 class MetaLearnerAgent(RLAgent):
     """Meta-learner agent for deciding when to override LLM decisions.
 
-    Uses PPO with discrete action space for three actions:
+    Uses PyTorch neural network with discrete action space for three actions:
     - AGREE (0): Follow LLM decision
     - OVERRIDE_TO_SKIP (1): Override LLM "take" to "skip"
     - OVERRIDE_TO_TAKE (2): Override LLM "skip" to "take"
     """
 
-    def __init__(self):
-        """Initialize meta-learner agent."""
-        super().__init__(agent_name="meta_learner")
+    def __init__(self, model_path: str | None = None):
+        """Initialize meta-learner agent.
+
+        Args:
+            model_path: Path to trained model (optional)
+        """
+        super().__init__(agent_name="meta_learner", model_path=model_path)
         self.encoder = MetaLearnerStateEncoder()
-        self.model: Optional[PPO] = None
+
+        # Load model if path provided
+        if model_path:
+            self.load_model(model_path)
 
     def predict(
         self,
@@ -62,7 +68,7 @@ class MetaLearnerAgent(RLAgent):
             candidate, llm_response, llm_history or {}, portfolio_state or {}
         )
 
-        # Predict action
+        # Get action from PPO model
         action, _ = self.model.predict(state, deterministic=deterministic)
 
         return int(action)
@@ -93,20 +99,14 @@ class MetaLearnerAgent(RLAgent):
             candidate, llm_response, llm_history or {}, portfolio_state or {}
         )
 
-        # Predict with policy
-        action, _ = self.model.predict(state, deterministic=False)
+        # Get action probabilities from PPO policy
+        action_probs = self.model.policy.get_distribution(state).distribution.probs.detach().numpy()
 
-        # Estimate confidence from value function
-        try:
-            obs_tensor = self.model.policy.obs_to_tensor(state)[0]
-            with self.model.policy.policy.mlp_extractor.forward(obs_tensor):
-                value = self.model.policy.predict_values(obs_tensor)
-                confidence = float(np.abs(value.detach().numpy()[0][0]))
-        except Exception as e:
-            logger.warning(f"Failed to estimate confidence: {e}")
-            confidence = 0.5  # Default confidence
+        # Get most likely action
+        action = int(np.argmax(action_probs))
+        confidence = float(action_probs[action])
 
-        return int(action), confidence
+        return action, confidence
 
     def should_override(
         self,
@@ -154,27 +154,6 @@ class MetaLearnerAgent(RLAgent):
             Action space description
         """
         return "Discrete(3)"
-
-    def load_model(self, model_path: str) -> None:
-        """Load trained PPO model.
-
-        Args:
-            model_path: Path to model file
-        """
-        model_file = Path(model_path)
-        if not model_file.exists():
-            raise FileNotFoundError(f"Model not found: {model_path}")
-
-        self.model = PPO.load(str(model_file))
-        logger.info(f"Loaded meta-learner agent model from {model_path}")
-
-    def is_loaded(self) -> bool:
-        """Check if model is loaded.
-
-        Returns:
-            True if model is loaded
-        """
-        return self.model is not None
 
     def explain_decision(
         self,
