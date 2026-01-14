@@ -1,0 +1,101 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: darwin_web
+      POSTGRES_USER: darwin
+      POSTGRES_PASSWORD: password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U darwin"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://darwin:password@postgres:5432/darwin_web
+      REDIS_URL: redis://redis:6379/0
+      AI_GATEWAY_API_KEY: ${AI_GATEWAY_API_KEY}
+      AI_GATEWAY_BASE_URL: ${AI_GATEWAY_BASE_URL:-https://ai-gateway.vercel.sh/v1}
+      MODEL_ID: ${MODEL_ID:-google/gemini-3-flash}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-in-production}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-1440}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3001,http://localhost:3000}
+      API_HOST: ${API_HOST:-0.0.0.0}
+      API_PORT: ${API_PORT:-8000}
+      REPLAY_LAB_URL: ${REPLAY_LAB_URL}
+      REPLAY_LAB_API_KEY: ${REPLAY_LAB_API_KEY}
+      DARWIN_ARTIFACTS_DIR: ${DARWIN_ARTIFACTS_DIR:-artifacts}
+      DARWIN_LOG_LEVEL: ${DARWIN_LOG_LEVEL:-INFO}
+    volumes:
+      - ./artifacts:/app/artifacts
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      DATABASE_URL: postgresql://darwin:password@postgres:5432/darwin_web
+      REDIS_URL: redis://redis:6379/0
+      AI_GATEWAY_API_KEY: ${AI_GATEWAY_API_KEY}
+      AI_GATEWAY_BASE_URL: ${AI_GATEWAY_BASE_URL:-https://ai-gateway.vercel.sh/v1}
+      MODEL_ID: ${MODEL_ID:-google/gemini-3-flash}
+      REPLAY_LAB_URL: ${REPLAY_LAB_URL}
+      REPLAY_LAB_API_KEY: ${REPLAY_LAB_API_KEY}
+      DARWIN_ARTIFACTS_DIR: ${DARWIN_ARTIFACTS_DIR:-artifacts}
+      DARWIN_LOG_LEVEL: ${DARWIN_LOG_LEVEL:-INFO}
+    volumes:
+      - ./artifacts:/app/artifacts
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./darwin-ui
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      # For Docker, use internal network name 'api'
+      # For local dev without Docker, use localhost:8000
+      NEXT_PUBLIC_API_URL: http://api:8000
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3001}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-change-me-in-production}
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+  redis_data:
